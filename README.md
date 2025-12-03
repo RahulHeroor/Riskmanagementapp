@@ -36,6 +36,13 @@ The application provides an intuitive interface, automated risk suggestions usin
 * Task progress tracking
 * Audit-ready logs
 
+
+<img width="1349" height="679" alt="Screenshot 2025-12-03 at 11 43 04 PM" src="https://github.com/user-attachments/assets/7855a86b-cd29-4bfc-aea2-7f1b1bbdcf18" />
+
+
+
+
+
 ### ✔ **Modern Frontend**
 
 * Built with **React + TypeScript**
