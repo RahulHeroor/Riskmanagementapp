@@ -130,12 +130,14 @@ npm start
 
 ---
 
-## 🧪 **Screenshots (Optional)**
-
-*(Add screenshots later — highly recommended to make your repo stand out)*
+## 🧪 **Screenshots **
 
 * Dashboard
 * Risk Entry Form
+<img width="1350" height="684" alt="Screenshot 2025-12-03 at 11 46 43 PM" src="https://github.com/user-attachments/assets/bfe800ed-c5a3-45b2-8164-3b7a8a0e1647" />
+  
+<img width="1350" height="683" alt="Screenshot 2025-12-03 at 11 46 55 PM" src="https://github.com/user-attachments/assets/f12e9186-b546-4f4f-93d0-06eccabe37b8" />
+
 * AI Suggestion UI
 * Heatmap
 * Treatment Plan
