@@ -4,6 +4,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import sqlite3 from 'sqlite3';
 import { GoogleGenAI, Type } from "@google/genai";
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,6 +14,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const HOST = '0.0.0.0'; 
 const DB_FILE = path.join(__dirname, 'risks.db');
+const JWT_SECRET = process.env.JWT_SECRET || 'secure-enterprise-secret-key-change-me-in-prod';
 
 // --- Configuration ---
 const apiKey = process.env.API_KEY || '';
@@ -49,20 +52,93 @@ db.serialize(() => {
     createdAt TEXT,
     updatedAt TEXT
   )`);
+
+  // Create Users Table
+  db.run(`CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT UNIQUE,
+    password TEXT,
+    role TEXT,
+    createdAt TEXT
+  )`);
 });
 
 // --- Helper Promisify DB ---
 const dbAll = (sql, params = []) => new Promise((resolve, reject) => {
   db.all(sql, params, (err, rows) => err ? reject(err) : resolve(rows));
 });
+const dbGet = (sql, params = []) => new Promise((resolve, reject) => {
+  db.get(sql, params, (err, row) => err ? reject(err) : resolve(row));
+});
 const dbRun = (sql, params = []) => new Promise((resolve, reject) => {
   db.run(sql, params, function(err) { err ? reject(err) : resolve(this); });
 });
 
-// --- API Routes ---
+// --- Auth Middleware ---
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
 
-// 1. Get All Risks
-app.get('/api/risks', async (req, res) => {
+  if (!token) return res.status(401).json({ error: "Access Denied: No Token Provided" });
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ error: "Access Denied: Invalid Token" });
+    req.user = user;
+    next();
+  });
+};
+
+const authorizeRole = (roles) => (req, res, next) => {
+  if (!roles.includes(req.user.role)) {
+    return res.status(403).json({ error: "Access Denied: Insufficient Permissions" });
+  }
+  next();
+};
+
+// --- Auth Routes ---
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, password, role } = req.body;
+    if (!username || !password || !role) return res.status(400).json({ error: "Missing fields" });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const userId = Date.now().toString(36) + Math.random().toString(36).substring(2);
+    
+    await dbRun(
+      `INSERT INTO users (id, username, password, role, createdAt) VALUES (?, ?, ?, ?, ?)`,
+      [userId, username, hashedPassword, role, new Date().toISOString()]
+    );
+
+    const token = jwt.sign({ id: userId, username, role }, JWT_SECRET, { expiresIn: '24h' });
+    res.status(201).json({ user: { id: userId, username, role }, token });
+  } catch (err) {
+    if (err.message.includes('UNIQUE')) return res.status(400).json({ error: "Username already exists" });
+    res.status(500).json({ error: "Registration failed" });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const user = await dbGet("SELECT * FROM users WHERE username = ?", [username]);
+    
+    if (!user) return res.status(400).json({ error: "User not found" });
+
+    const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) return res.status(400).json({ error: "Invalid password" });
+
+    const token = jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: '24h' });
+    res.json({ user: { id: user.id, username: user.username, role: user.role }, token });
+  } catch (err) {
+    res.status(500).json({ error: "Login failed" });
+  }
+});
+
+// --- API Routes (Protected) ---
+
+// 1. Get All Risks (All Authenticated Users)
+app.get('/api/risks', authenticateToken, async (req, res) => {
   try {
     const risks = await dbAll("SELECT * FROM risks ORDER BY createdAt DESC");
     res.json(risks);
@@ -71,8 +147,8 @@ app.get('/api/risks', async (req, res) => {
   }
 });
 
-// 2. Create Risk
-app.post('/api/risks', async (req, res) => {
+// 2. Create Risk (Admin, Analyst)
+app.post('/api/risks', authenticateToken, authorizeRole(['Admin', 'Analyst']), async (req, res) => {
   try {
     const r = req.body;
     await dbRun(
@@ -87,8 +163,8 @@ app.post('/api/risks', async (req, res) => {
   }
 });
 
-// 3. Update Risk
-app.put('/api/risks/:id', async (req, res) => {
+// 3. Update Risk (Admin, Analyst)
+app.put('/api/risks/:id', authenticateToken, authorizeRole(['Admin', 'Analyst']), async (req, res) => {
   try {
     const r = req.body;
     await dbRun(
@@ -101,8 +177,8 @@ app.put('/api/risks/:id', async (req, res) => {
   }
 });
 
-// 4. Delete Risk
-app.delete('/api/risks/:id', async (req, res) => {
+// 4. Delete Risk (Admin Only)
+app.delete('/api/risks/:id', authenticateToken, authorizeRole(['Admin']), async (req, res) => {
   try {
     await dbRun("DELETE FROM risks WHERE id=?", [req.params.id]);
     res.json({ success: true });
@@ -111,9 +187,9 @@ app.delete('/api/risks/:id', async (req, res) => {
   }
 });
 
-// --- AI Routes (Backend Proxy) ---
+// --- AI Routes (Backend Proxy - Protected) ---
 
-app.post('/api/ai/suggest', async (req, res) => {
+app.post('/api/ai/suggest', authenticateToken, async (req, res) => {
   if (!ai) return res.status(500).json({ error: "Server missing API Key" });
   
   const { asset, context } = req.body;
@@ -141,7 +217,7 @@ app.post('/api/ai/suggest', async (req, res) => {
   }
 });
 
-app.post('/api/ai/treatment', async (req, res) => {
+app.post('/api/ai/treatment', authenticateToken, async (req, res) => {
   if (!ai) return res.status(500).json({ error: "Server missing API Key" });
 
   const { title, threat, vulnerability } = req.body;

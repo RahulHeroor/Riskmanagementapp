@@ -1,17 +1,18 @@
 import React, { useState } from 'react';
-import { Risk } from '../types';
+import { Risk, UserRole } from '../types';
 import { RISK_LEVEL_COLORS, RISK_STATUS_COLORS } from '../constants';
-import { Edit2, Trash2, Search, Filter, Download, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-react';
+import { Edit2, Trash2, Search, Filter, Download, ChevronLeft, ChevronRight, ArrowUpDown, Lock } from 'lucide-react';
 
 interface RiskRegisterProps {
   risks: Risk[];
+  userRole: UserRole;
   onEdit: (risk: Risk) => void;
   onDelete: (id: string) => void;
 }
 
 const ITEMS_PER_PAGE = 10;
 
-const RiskRegister: React.FC<RiskRegisterProps> = ({ risks, onEdit, onDelete }) => {
+const RiskRegister: React.FC<RiskRegisterProps> = ({ risks, userRole, onEdit, onDelete }) => {
   const [search, setSearch] = useState('');
   const [filterLevel, setFilterLevel] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
@@ -64,7 +65,7 @@ const RiskRegister: React.FC<RiskRegisterProps> = ({ risks, onEdit, onDelete }) 
     const headers = ["ID", "Asset", "Title", "Threat", "Vulnerability", "Score", "Level", "Status", "Owner", "Treatment Plan"];
     const rows = sortedRisks.map(r => [
       r.id, 
-      `"${r.asset.replace(/"/g, '""')}"`, // Escape quotes
+      `"${r.asset.replace(/"/g, '""')}"`,
       `"${r.title.replace(/"/g, '""')}"`,
       `"${r.threat.replace(/"/g, '""')}"`,
       `"${r.vulnerability.replace(/"/g, '""')}"`,
@@ -87,6 +88,9 @@ const RiskRegister: React.FC<RiskRegisterProps> = ({ risks, onEdit, onDelete }) 
     link.click();
     document.body.removeChild(link);
   };
+
+  const canEdit = userRole === 'Admin' || userRole === 'Analyst';
+  const canDelete = userRole === 'Admin';
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-[calc(100vh-140px)] animate-in fade-in duration-500">
@@ -187,20 +191,27 @@ const RiskRegister: React.FC<RiskRegisterProps> = ({ risks, onEdit, onDelete }) 
                 </td>
                 <td className="p-4 align-top text-right">
                   <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => onEdit(risk)}
-                      className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                      title="Edit Risk"
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                    <button
-                      onClick={() => onDelete(risk.id)}
-                      className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                      title="Delete Risk"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    {canEdit ? (
+                      <button
+                        onClick={() => onEdit(risk)}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Edit Risk"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                    ) : (
+                      <div className="p-2 text-slate-300" title="Read Only"><Lock size={16}/></div>
+                    )}
+                    
+                    {canDelete && (
+                      <button
+                        onClick={() => onDelete(risk.id)}
+                        className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Delete Risk"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

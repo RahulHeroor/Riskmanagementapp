@@ -25,6 +25,7 @@ export interface ChartData {
 }
 
 export enum AppView {
+  AUTH = 'AUTH',
   DASHBOARD = 'DASHBOARD',
   REGISTER = 'REGISTER',
   ASSESSMENT = 'ASSESSMENT',
@@ -34,4 +35,18 @@ export interface GeminiAnalysisResult {
   threats: string[];
   vulnerabilities: string[];
   suggestedControls: string[];
+}
+
+export type UserRole = 'Admin' | 'Analyst' | 'Viewer';
+
+export interface User {
+  id: string;
+  username: string;
+  role: UserRole;
+  token?: string;
+}
+
+export interface AuthResponse {
+  user: User;
+  token: string;
 }

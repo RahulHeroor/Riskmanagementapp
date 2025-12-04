@@ -1,24 +1,54 @@
 import React, { useState, useEffect } from 'react';
-import { Risk, AppView } from './types';
+import { Risk, AppView, User, AuthResponse } from './types';
 import Dashboard from './components/Dashboard';
 import RiskRegister from './components/RiskRegister';
 import RiskForm from './components/RiskForm';
+import Auth from './components/Auth';
 import { LayoutDashboard, FileSpreadsheet, Plus, ShieldCheck, Settings, LogOut, Loader2, WifiOff } from 'lucide-react';
 import { api } from './api';
 
 const App: React.FC = () => {
+  const [user, setUser] = useState<User | null>(null);
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [risks, setRisks] = useState<Risk[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRisk, setEditingRisk] = useState<Risk | null>(null);
 
-  // Initial Data Fetch
+  // Check for existing token
   useEffect(() => {
-    fetchRisks();
+    const token = localStorage.getItem('token');
+    if (token) {
+      // Decode token properly in production or just assume session valid for now
+      // Here we just simulate re-hydration if we had a /me endpoint, 
+      // but simpler to require re-login or just assume logged in state if needed.
+      // For security best practice, we should validate token, but for this demo:
+      setUser({ id: 'resume', username: 'User', role: 'Analyst' }); // Temporary resume
+      // Better: Logout on refresh to force login or implement /api/auth/me
+      // Let's force login to ensure we get correct role
+      setUser(null);
+    }
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchRisks();
+    }
+  }, [user]);
+
+  const handleLogin = (data: AuthResponse) => {
+    api.setToken(data.token);
+    setUser(data.user);
+    setCurrentView(AppView.DASHBOARD);
+  };
+
+  const handleLogout = () => {
+    api.setToken(null);
+    setUser(null);
+    setRisks([]);
+  };
 
   const fetchRisks = async () => {
     try {
@@ -28,6 +58,11 @@ const App: React.FC = () => {
       setRisks(data);
     } catch (err) {
       console.error(err);
+      if (err instanceof Error && err.message === 'Unauthorized') {
+         handleLogout();
+         alert("Session expired. Please login again.");
+         return;
+      }
       setError('Could not connect to the backend server. Please ensure "node server.js" is running.');
     } finally {
       setIsLoading(false);
@@ -48,7 +83,7 @@ const App: React.FC = () => {
     } catch (err) {
       console.error(err);
       const msg = err instanceof Error ? err.message : "Unknown error";
-      alert(`Failed to save risk: ${msg}. Check console for details.`);
+      alert(`Failed to save risk: ${msg}`);
     }
   };
 
@@ -58,7 +93,7 @@ const App: React.FC = () => {
         await api.deleteRisk(id);
         setRisks(prev => prev.filter(r => r.id !== id));
       } catch (err) {
-        alert("Failed to delete risk.");
+        alert("Failed to delete risk. You might not have permission.");
       }
     }
   };
@@ -73,6 +108,10 @@ const App: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  if (!user) {
+    return <Auth onLogin={handleLogin} />;
+  }
+
   return (
     <div className="flex h-screen bg-slate-50">
       
@@ -84,7 +123,7 @@ const App: React.FC = () => {
           </div>
           <div>
             <h1 className="font-bold text-white text-lg leading-tight">SecureRisk</h1>
-            <span className="text-xs text-slate-500 uppercase tracking-wider">ISMS Pro</span>
+            <span className="text-xs text-slate-500 uppercase tracking-wider">ISMS Enterprise</span>
           </div>
         </div>
 
@@ -115,11 +154,21 @@ const App: React.FC = () => {
         </nav>
 
         <div className="p-4 border-t border-slate-800 space-y-2">
+           <div className="px-4 py-2 mb-2">
+             <div className="text-xs text-slate-500 uppercase">Logged in as</div>
+             <div className="text-white font-bold truncate">{user.username}</div>
+             <div className="text-xs text-blue-400 font-medium border border-blue-900/50 bg-blue-900/20 px-2 py-0.5 rounded inline-block mt-1">
+               {user.role}
+             </div>
+           </div>
           <button className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-slate-800 text-sm transition-colors text-slate-400 hover:text-white">
             <Settings size={18} />
             Settings
           </button>
-          <button className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-slate-800 text-sm transition-colors text-slate-400 hover:text-white">
+          <button 
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-4 py-2 rounded-lg hover:bg-slate-800 text-sm transition-colors text-slate-400 hover:text-white"
+          >
             <LogOut size={18} />
             Logout
           </button>
@@ -135,15 +184,17 @@ const App: React.FC = () => {
           </h2>
           
           <div className="flex items-center gap-4">
-            <button
-              onClick={handleAddNew}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 transition-all font-medium text-sm"
-            >
-              <Plus size={18} />
-              New Assessment
-            </button>
+            {currentView === AppView.REGISTER && user.role !== 'Viewer' && (
+              <button
+                onClick={handleAddNew}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm flex items-center gap-2 transition-all font-medium text-sm"
+              >
+                <Plus size={18} />
+                New Assessment
+              </button>
+            )}
             <div className="w-8 h-8 rounded-full bg-slate-200 border-2 border-white shadow-sm overflow-hidden">
-               <img src="https://picsum.photos/100/100" alt="User" className="w-full h-full object-cover" />
+               <img src={`https://ui-avatars.com/api/?name=${user.username}&background=random`} alt="User" className="w-full h-full object-cover" />
             </div>
           </div>
         </header>
@@ -174,7 +225,8 @@ const App: React.FC = () => {
                
                {currentView === AppView.REGISTER && (
                  <RiskRegister 
-                    risks={risks} 
+                    risks={risks}
+                    userRole={user.role}
                     onEdit={handleEditRisk} 
                     onDelete={handleDeleteRisk}
                   />
